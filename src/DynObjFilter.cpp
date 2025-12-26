@@ -303,7 +303,7 @@ void  DynObjFilter::filter(PointCloudXYZI::Ptr feats_undistort, const M3D & rot_
     points.resize(size);
     point_soph* p = point_soph_pointers[cur_point_soph_pointers];
     if(time_file != "") time_out << size << " "; //rec computation time
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_cache.size(), 1024), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_cache.size(), 4096), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t idx = range.begin(); idx != range.end(); ++idx)
         {
             int i = index_cache[idx];
@@ -650,7 +650,7 @@ void  DynObjFilter::Points2Buffer(vector<point_soph*> &points, std::vector<int> 
 {
     int cur_tail = buffer.tail;
     buffer.push_parallel_prepare(points.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_vector.size(), 1024), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_vector.size(), 4096), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t idx = range.begin(); idx != range.end(); ++idx)
         {
             int i = index_vector[idx];
@@ -668,11 +668,18 @@ void  DynObjFilter::Buffer2DepthMap(double cur_time)
     double total_3 = 0.0;
     double t = 0.0;
     int max_point = 0;
+    if(depth_bucket_lookup.empty())
+    {
+        depth_bucket_lookup.assign(MAX_2D_N, -1);
+        depth_bucket_positions.reserve(4096);
+        depth_bucket_points.reserve(4096);
+    }
     for (int k = 0; k < len; k++)
     {   
         point_soph* point = buffer.front();
         if ((cur_time - point->time) >= buffer_delay - frame_dur/2.0)
         {   
+            DepthMap::Ptr map;
             if(depth_map_list.size() == 0)
             {
                 if(depth_map_list.size() < max_depth_map_num)
@@ -703,34 +710,24 @@ void  DynObjFilter::Buffer2DepthMap(double cur_time)
                     depth_map_list.push_back(new_map_pointer);
                 }
             }
+            map = depth_map_list.back();
             switch (point->dyn)
             {
-                if(depth_map_list.back()->depth_map.size() <= point->position) 
+                if(map->depth_map.size() <= point->position) 
                 case STATIC:
-                    SphericalProjection(*point, depth_map_list.back()->map_index, depth_map_list.back()->project_R, depth_map_list.back()->project_T, *point);                  
-                    if(depth_map_list.back()->depth_map[point->position].size() < max_pixel_points)
+                    SphericalProjection(*point, map->map_index, map->project_R, map->project_T, *point);
+                    map->MarkDirty(point->position);
+                    if(point->position >= 0 && point->position < MAX_2D_N)
                     {
-                        depth_map_list.back()->depth_map[point->position].push_back(point);
-                        if (point->vec(2) > depth_map_list.back()->max_depth_all[point->position])  
+                        int &bucket_idx = depth_bucket_lookup[point->position];
+                        if(bucket_idx < 0)
                         {
-                            depth_map_list.back()->max_depth_all[point->position] = point->vec(2);
-                            depth_map_list.back()->max_depth_index_all[point->position] = depth_map_list.back()->depth_map[point->position].size()-1;
+                            bucket_idx = static_cast<int>(depth_bucket_points.size());
+                            depth_bucket_positions.push_back(point->position);
+                            depth_bucket_points.emplace_back();
+                            depth_bucket_points.back().reserve(8);
                         }
-                        if (point->vec(2) < depth_map_list.back()->min_depth_all[point->position] ||\
-                            depth_map_list.back()->min_depth_all[point->position] < 10E-5)  
-                        {
-                            depth_map_list.back()->min_depth_all[point->position] = point->vec(2);
-                            depth_map_list.back()->min_depth_index_all[point->position] = depth_map_list.back()->depth_map[point->position].size()-1;
-                        }
-                        if (point->vec(2) < depth_map_list.back()->min_depth_static[point->position] ||\
-                            depth_map_list.back()->min_depth_static[point->position] < 10E-5)  
-                        {
-                            depth_map_list.back()->min_depth_static[point->position] = point->vec(2);
-                        }
-                        if (point->vec(2) > depth_map_list.back()->max_depth_static[point->position])  
-                        {
-                            depth_map_list.back()->max_depth_static[point->position] = point->vec(2);
-                        }                        
+                        depth_bucket_points[bucket_idx].push_back(point);
                     }
                     break;   
                 case CASE1:   
@@ -738,21 +735,19 @@ void  DynObjFilter::Buffer2DepthMap(double cur_time)
                 case CASE2:
 
                 case CASE3:
-                    SphericalProjection(*point, depth_map_list.back()->map_index, depth_map_list.back()->project_R, depth_map_list.back()->project_T, *point);
-                    if(depth_map_list.back()->depth_map[point->position].size() < max_pixel_points)
+                    SphericalProjection(*point, map->map_index, map->project_R, map->project_T, *point);
+                    map->MarkDirty(point->position);
+                    if(point->position >= 0 && point->position < MAX_2D_N)
                     {
-                        depth_map_list.back()->depth_map[point->position].push_back(point);
-                        if (point->vec(2) > depth_map_list.back()->max_depth_all[point->position])  
+                        int &bucket_idx = depth_bucket_lookup[point->position];
+                        if(bucket_idx < 0)
                         {
-                            depth_map_list.back()->max_depth_all[point->position] = point->vec(2);
-                            depth_map_list.back()->max_depth_index_all[point->position] = depth_map_list.back()->depth_map[point->position].size()-1;
+                            bucket_idx = static_cast<int>(depth_bucket_points.size());
+                            depth_bucket_positions.push_back(point->position);
+                            depth_bucket_points.emplace_back();
+                            depth_bucket_points.back().reserve(8);
                         }
-                        if (point->vec(2) < depth_map_list.back()->min_depth_all[point->position] ||\
-                            depth_map_list.back()->min_depth_all[point->position] < 10E-5)  
-                        {
-                            depth_map_list.back()->min_depth_all[point->position] = point->vec(2);
-                            depth_map_list.back()->min_depth_index_all[point->position] = depth_map_list.back()->depth_map[point->position].size()-1;
-                        }
+                        depth_bucket_points[bucket_idx].push_back(point);
                     }
                     break;
                 default:    
@@ -764,6 +759,55 @@ void  DynObjFilter::Buffer2DepthMap(double cur_time)
         {
             break;
         }
+    }
+    if(!depth_bucket_positions.empty() && !depth_map_list.empty())
+    {
+        DepthMap::Ptr map = depth_map_list.back();
+        for(size_t bi = 0; bi < depth_bucket_positions.size(); ++bi)
+        {
+            int pos = depth_bucket_positions[bi];
+            std::vector<point_soph*> &points = depth_bucket_points[bi];
+            if(points.empty()) continue;
+            if(map->depth_map[pos].empty() && map->depth_map[pos].capacity() < 8)
+            {
+                map->depth_map[pos].reserve(std::min(8, max_pixel_points));
+            }
+            size_t base = map->depth_map[pos].size();
+            for(size_t i = 0; i < points.size(); ++i)
+            {
+                point_soph* point = points[i];
+                if(map->depth_map[pos].size() >= static_cast<size_t>(max_pixel_points))
+                {
+                    break;
+                }
+                map->depth_map[pos].push_back(point);
+                const size_t idx = base + i;
+                if(point->vec(2) > map->max_depth_all[pos])
+                {
+                    map->max_depth_all[pos] = point->vec(2);
+                    map->max_depth_index_all[pos] = static_cast<int>(idx);
+                }
+                if(point->vec(2) < map->min_depth_all[pos] || map->min_depth_all[pos] < 10E-5)
+                {
+                    map->min_depth_all[pos] = point->vec(2);
+                    map->min_depth_index_all[pos] = static_cast<int>(idx);
+                }
+                if(point->dyn == STATIC)
+                {
+                    if(point->vec(2) < map->min_depth_static[pos] || map->min_depth_static[pos] < 10E-5)
+                    {
+                        map->min_depth_static[pos] = point->vec(2);
+                    }
+                    if(point->vec(2) > map->max_depth_static[pos])
+                    {
+                        map->max_depth_static[pos] = point->vec(2);
+                    }
+                }
+            }
+            points.clear();
+            depth_bucket_lookup[pos] = -1;
+        }
+        depth_bucket_positions.clear();
     }
     if (debug_en)
     {   
@@ -792,6 +836,14 @@ void  DynObjFilter::Buffer2DepthMap(double cur_time)
 
 void  DynObjFilter::SphericalProjection(point_soph &p, int depth_index, const M3D &rot, const V3D &transl, point_soph &p_spherical)
 {
+    if(p.last_proj_index == depth_index)
+    {
+        p_spherical.vec = p.last_proj_vec;
+        p_spherical.hor_ind = p.last_proj_pos[0];
+        p_spherical.ver_ind = p.last_proj_pos[1];
+        p_spherical.position = p.last_proj_pos[2];
+        return;
+    }
     if(fabs(p.last_vecs.at(depth_index%HASH_PRIM)[2]) > 10E-5)
     {       
         p_spherical.vec = p.last_vecs.at(depth_index%HASH_PRIM);
@@ -808,6 +860,11 @@ void  DynObjFilter::SphericalProjection(point_soph &p, int depth_index, const M3
         p.last_positions.at(depth_index%HASH_PRIM)[1] = p_spherical.ver_ind;
         p.last_positions.at(depth_index%HASH_PRIM)[2] = p_spherical.position;
     }
+    p.last_proj_index = depth_index;
+    p.last_proj_vec = p_spherical.vec;
+    p.last_proj_pos[0] = p_spherical.hor_ind;
+    p.last_proj_pos[1] = p_spherical.ver_ind;
+    p.last_proj_pos[2] = p_spherical.position;
 }
 
 bool  DynObjFilter::InvalidPointCheck(const V3D &body, const int intensity)
@@ -1521,29 +1578,36 @@ float DynObjFilter::DepthInterpolationAll(point_soph & p, int map_index, const D
 
 bool  DynObjFilter::Case2DepthConsistencyCheck(const point_soph & p, const DepthMap &map_info)
 {
+    const float p_x = p.vec(0);
+    const float p_y = p.vec(1);
+    const float p_z = p.vec(2);
+    const double p_time = p.time;
+    const int hor_ind = p.hor_ind;
+    const int ver_ind = p.ver_ind;
+    const DepthMap2D &depth_map = map_info.depth_map;
     float all_minus = 0;
     int num = 0, smaller_num = 0, all_num = 0, greater_num = 0;
     for (int ind_hor = -depth_cons_hor_num2; ind_hor <= depth_cons_hor_num2; ind_hor ++)
     {
         for (int ind_ver = -depth_cons_ver_num2; ind_ver <= depth_cons_ver_num2; ind_ver ++)
         {   
-            int pos_new = ((p.hor_ind + ind_hor)%MAX_1D) * MAX_1D_HALF + ((p.ver_ind +ind_ver)%MAX_1D_HALF); 
+            int pos_new = ((hor_ind + ind_hor)%MAX_1D) * MAX_1D_HALF + ((ver_ind + ind_ver)%MAX_1D_HALF); 
             if (pos_new < 0 || pos_new >= MAX_2D_N)  continue;
-            const vector<point_soph*> & points_in_pixel = map_info.depth_map[pos_new];
+            const vector<point_soph*> & points_in_pixel = depth_map[pos_new];
             for (int j = 0; j < points_in_pixel.size(); j ++)
             {
                 const point_soph* point = points_in_pixel[j]; 
-                if(fabs(point->time - p.time) < frame_dur && fabs(point->vec(0)-p.vec(0)) < depth_cons_hor_thr2 && \
-                  fabs(point->vec(1)-p.vec(1)) < depth_cons_ver_thr2)
+                if(fabs(point->time - p_time) < frame_dur && fabs(point->vec(0)-p_x) < depth_cons_hor_thr2 && \
+                  fabs(point->vec(1)-p_y) < depth_cons_ver_thr2)
                 {
                     all_num ++;
                     if (point->dyn == STATIC) 
                     {
-                        float cur_minus = p.vec(2)-point->vec(2);
+                        float cur_minus = p_z-point->vec(2);
                         if (fabs(cur_minus) < depth_cons_depth_max_thr2)
                         {
                             num ++;
-                            all_minus += fabs(point->vec(2)-p.vec(2));
+                            all_minus += fabs(point->vec(2)-p_z);
                         }
                         else if (cur_minus > 0)
                         {
@@ -1562,7 +1626,7 @@ bool  DynObjFilter::Case2DepthConsistencyCheck(const point_soph & p, const Depth
     {
         if(num > 1)
         {           
-            float cur_depth_thr = max(depth_cons_depth_thr2, k_depth2*p.vec(2));
+            float cur_depth_thr = max(depth_cons_depth_thr2, k_depth2*p_z);
             if(all_minus/(num-1) > cur_depth_thr)
             {
                 return false;
@@ -1848,29 +1912,36 @@ bool  DynObjFilter::Case3IsOccluding(const point_soph & p, const point_soph & p_
 
 bool  DynObjFilter::Case3DepthConsistencyCheck(const point_soph & p, const DepthMap &map_info)
 {
+    const float p_x = p.vec(0);
+    const float p_y = p.vec(1);
+    const float p_z = p.vec(2);
+    const double p_time = p.time;
+    const int hor_ind = p.hor_ind;
+    const int ver_ind = p.ver_ind;
+    const DepthMap2D &depth_map = map_info.depth_map;
     float all_minus = 0;
     int num = 0, smaller_num = 0, all_num = 0, greater_num = 0;//
     for (int ind_hor = -depth_cons_hor_num3; ind_hor <= depth_cons_hor_num3; ind_hor ++)
     {
         for (int ind_ver = -depth_cons_ver_num3; ind_ver <= depth_cons_ver_num3; ind_ver ++)
         {   
-            int pos_new = ((p.hor_ind + ind_hor)%MAX_1D) * MAX_1D_HALF + ((p.ver_ind +ind_ver)%MAX_1D_HALF);      
+            int pos_new = ((hor_ind + ind_hor)%MAX_1D) * MAX_1D_HALF + ((ver_ind + ind_ver)%MAX_1D_HALF);      
             if (pos_new < 0 || pos_new >= MAX_2D_N)  continue;
-            const vector<point_soph*> & points_in_pixel = map_info.depth_map[pos_new];
+            const vector<point_soph*> & points_in_pixel = depth_map[pos_new];
             for (int j = 0; j < points_in_pixel.size(); j ++)
             {
                 const point_soph* point = points_in_pixel[j]; 
-                if(fabs(point->time - p.time) < frame_dur && fabs(point->vec(0)-p.vec(0)) < depth_cons_hor_thr3 && \
-                  fabs(point->vec(1)-p.vec(1)) < depth_cons_ver_thr3)
+                if(fabs(point->time - p_time) < frame_dur && fabs(point->vec(0)-p_x) < depth_cons_hor_thr3 && \
+                  fabs(point->vec(1)-p_y) < depth_cons_ver_thr3)
                 {
                     all_num ++;
                     if (point->dyn == STATIC) 
                     {
-                        float cur_minus = p.vec(2)-point->vec(2);
+                        float cur_minus = p_z-point->vec(2);
                         if (fabs(cur_minus) < depth_cons_depth_max_thr3)
                         {
                             num ++;
-                            all_minus += fabs(point->vec(2)-p.vec(2));
+                            all_minus += fabs(point->vec(2)-p_z);
                         }
                         else if (cur_minus > 0)
                         {
@@ -1889,7 +1960,7 @@ bool  DynObjFilter::Case3DepthConsistencyCheck(const point_soph & p, const Depth
     {
         if(num > 1)
         {      
-            float cur_depth_thr = max(depth_cons_depth_thr3, k_depth3*p.vec(2));
+            float cur_depth_thr = max(depth_cons_depth_thr3, k_depth3*p_z);
             if(all_minus/(num-1) > cur_depth_thr)
             {
                 return false;

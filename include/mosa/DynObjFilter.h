@@ -2,10 +2,12 @@
 #define DYN_OBJ_FLT_H
 
 #include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
 #include <mutex>
 #include <condition_variable>
 #include <thread>
 #include <math.h>
+#include <cstdint>
 #include <rclcpp/rclcpp.hpp>
 // #include <so3_math.h>
 #include <Eigen/Core>
@@ -76,6 +78,9 @@ struct point_soph
     array<float, MAP_NUM> last_depth_interps = {};
     array<V3F, HASH_PRIM> last_vecs = {};
     array<Vector3i, HASH_PRIM> last_positions = {};   
+    int          last_proj_index = -1;
+    V3F          last_proj_vec = V3F::Zero();
+    Vector3i     last_proj_pos = Vector3i::Zero();
     typedef boost::shared_ptr<point_soph> Ptr;
     point_soph(V3D & point, float & hor_resolution_max, float & ver_resolution_max)
     {
@@ -97,6 +102,9 @@ struct point_soph
         last_depth_interps.fill(0.0);
         last_vecs.fill(V3F::Zero());
         last_positions.fill(Vector3i::Zero());
+        last_proj_index = -1;
+        last_proj_vec.setZero();
+        last_proj_pos.setZero();
         is_distort = false;
         cur_vec.setZero();
         local.setZero();
@@ -117,6 +125,9 @@ struct point_soph
         last_depth_interps.fill(0.0);
         last_vecs.fill(V3F::Zero());
         last_positions.fill(Vector3i::Zero());
+        last_proj_index = -1;
+        last_proj_vec.setZero();
+        last_proj_pos.setZero();
         is_distort = false;
         cur_vec.setZero();
         local.setZero();
@@ -140,6 +151,9 @@ struct point_soph
         last_depth_interps.fill(0.0);
         last_vecs.fill(V3F::Zero());
         last_positions.fill(Vector3i::Zero());
+        last_proj_index = -1;
+        last_proj_vec.setZero();
+        last_proj_pos.setZero();
         is_distort = false;
         cur_vec.setZero();
         local.setZero();
@@ -165,6 +179,9 @@ struct point_soph
         last_depth_interps = cur.last_depth_interps;
         last_vecs = cur.last_vecs;
         last_positions = cur.last_positions;
+        last_proj_index = cur.last_proj_index;
+        last_proj_vec = cur.last_proj_vec;
+        last_proj_pos = cur.last_proj_pos;
         local = cur.local;
         is_distort = cur.is_distort;
         cur_vec = cur.cur_vec;
@@ -195,6 +212,9 @@ struct point_soph
         last_depth_interps.fill(0.0);
         last_vecs.fill(V3F::Zero());
         last_positions.fill(Vector3i::Zero());
+        last_proj_index = -1;
+        last_proj_vec.setZero();
+        last_proj_pos.setZero();
         is_distort = false;
     };
 };
@@ -218,6 +238,8 @@ public:
     int*             max_depth_index_all = nullptr;
     int*             min_depth_index_all = nullptr;
     std::vector<int> index_vector;
+    std::vector<int> dirty_indices;
+    std::vector<uint8_t> dirty_flags;
     typedef boost::shared_ptr<DepthMap> Ptr;
 
     DepthMap()
@@ -246,6 +268,9 @@ public:
         for (int i = 0; i < MAX_2D_N; i++) {
             index_vector[i] = i;
         }
+        dirty_indices.clear();
+        dirty_indices.reserve(4096);
+        dirty_flags.assign(MAX_2D_N, 0);
     }
 
     DepthMap(M3D rot, V3D transl, double cur_time, int frame)
@@ -271,6 +296,9 @@ public:
         for (int i = 0; i < MAX_2D_N; i++) {
             index_vector[i] = i;
         }
+        dirty_indices.clear();
+        dirty_indices.reserve(4096);
+        dirty_flags.assign(MAX_2D_N, 0);
     }
 
     DepthMap(const DepthMap & cur)
@@ -304,6 +332,8 @@ public:
         for (int i = 0; i < MAX_2D_N; i++) {
             index_vector[i] = i;
         }
+        dirty_indices = cur.dirty_indices;
+        dirty_flags = cur.dirty_flags;
     }
     ~DepthMap()
     {
@@ -321,16 +351,36 @@ public:
         project_R = rot;
         project_T = transl;
         map_index = frame;
-        tbb::parallel_for(size_t(0), index_vector.size(), [&](size_t idx) {
-            int i = index_vector[idx];
-            depth_map[i].clear();
-        });
-        fill_n(min_depth_static, MAX_2D_N, 0.0);
-        fill_n(min_depth_all, MAX_2D_N, 0.0);
-        fill_n(max_depth_all, MAX_2D_N, 0.0);
-        fill_n(max_depth_static, MAX_2D_N, 0.0);
-        fill_n(max_depth_index_all, MAX_2D_N, -1);
-        fill_n(min_depth_index_all, MAX_2D_N, -1);
+        if(!dirty_indices.empty())
+        {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, dirty_indices.size(), 4096),
+                [&](const tbb::blocked_range<size_t> &range) {
+                    for(size_t idx = range.begin(); idx != range.end(); ++idx)
+                    {
+                        int i = dirty_indices[idx];
+                        depth_map[i].clear();
+                        min_depth_static[i] = 0.0f;
+                        min_depth_all[i] = 0.0f;
+                        max_depth_all[i] = 0.0f;
+                        max_depth_static[i] = 0.0f;
+                        max_depth_index_all[i] = -1;
+                        min_depth_index_all[i] = -1;
+                        dirty_flags[i] = 0;
+                    }
+                });
+            dirty_indices.clear();
+        }
+    }
+
+    void MarkDirty(int pos)
+    {
+        if(pos < 0 || pos >= MAX_2D_N) return;
+        if(dirty_flags[pos] == 0)
+        {
+            dirty_flags[pos] = 1;
+            dirty_indices.push_back(pos);
+        }
     }
 
 };
@@ -368,6 +418,9 @@ public:
     std::mutex cloud_pool_mtx;
     std::vector<int> index_cache;
     std::vector<int> dyn_tag_worker_cache;
+    std::vector<int> depth_bucket_lookup;
+    std::vector<int> depth_bucket_positions;
+    std::vector<std::vector<point_soph*>> depth_bucket_points;
     
     DynObjCluster Cluster;
     bool cluster_coupled = false, cluster_future = false;

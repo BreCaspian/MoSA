@@ -236,7 +236,7 @@ void DynObjCluster::PubClusterResult_voxel(std::vector<int> &dyn_tag, std_msgs::
     }
     std::vector<std::vector<int>> ground_voxels_candidates(bbox.Center.size());
     std::vector<std::vector<int>> insidebox_voxels_candidates(bbox.Center.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_bbox.size(), 64), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_bbox.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t idx = range.begin(); idx != range.end(); ++idx)
         {
             int bbox_i = index_bbox[idx];
@@ -296,7 +296,7 @@ void DynObjCluster::PubClusterResult_voxel(std::vector<int> &dyn_tag, std_msgs::
     const size_t lock_count = 4096;
     std::vector<tbb::spin_mutex> voxel_locks(lock_count);
     tbb::spin_mutex used_map_lock;
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, bbox.Center.size(), 64), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, bbox.Center.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t bbox_i = range.begin(); bbox_i != range.end(); ++bbox_i)
         {
             for (int voxel : ground_voxels_candidates[bbox_i])
@@ -402,7 +402,7 @@ void DynObjCluster::PubClusterResult_voxel(std::vector<int> &dyn_tag, std_msgs::
     tbb::concurrent_vector<PointType> true_ground_vec;
     tbb::concurrent_vector<int> dyn_tag_zero_global;
     tbb::concurrent_vector<int> dyn_tag_one_global;
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_bbox.size(), 64), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, index_bbox.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t idx = range.begin(); idx != range.end(); ++idx)
         {
             int k = index_bbox[idx];
@@ -479,21 +479,17 @@ void DynObjCluster::PubClusterResult_voxel(std::vector<int> &dyn_tag, std_msgs::
             }
         }
     });
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, dyn_tag_one_global.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
-        for(size_t idx = range.begin(); idx != range.end(); ++idx)
-        {
-            dyn_tag[dyn_tag_one_global[idx]] = 1;
-        }
-    });
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, dyn_tag_zero_global.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
-        for(size_t idx = range.begin(); idx != range.end(); ++idx)
-        {
-            dyn_tag[dyn_tag_zero_global[idx]] = 0;
-        }
-    });
+    for(size_t idx = 0; idx < dyn_tag_one_global.size(); ++idx)
+    {
+        dyn_tag[dyn_tag_one_global[idx]] = 1;
+    }
+    for(size_t idx = 0; idx < dyn_tag_zero_global.size(); ++idx)
+    {
+        dyn_tag[dyn_tag_zero_global[idx]] = 0;
+    }
     cluster_points.clear();
     cluster_points.points.resize(cluster_points_vec.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, cluster_points_vec.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, cluster_points_vec.size(), 1024), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t idx = range.begin(); idx != range.end(); ++idx)
         {
             cluster_points.points[idx] = cluster_points_vec[idx];
@@ -504,7 +500,7 @@ void DynObjCluster::PubClusterResult_voxel(std::vector<int> &dyn_tag, std_msgs::
     cluster_points.is_dense = false;
     true_ground.clear();
     true_ground.points.resize(true_ground_vec.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, true_ground_vec.size(), 256), [&](const tbb::blocked_range<size_t> &range) {
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, true_ground_vec.size(), 1024), [&](const tbb::blocked_range<size_t> &range) {
         for(size_t idx = range.begin(); idx != range.end(); ++idx)
         {
             true_ground.points[idx] = true_ground_vec[idx];

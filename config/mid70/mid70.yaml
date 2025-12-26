@@ -106,7 +106,7 @@ dynfilter_odom:
     "dyn_obj/track_min_hits": 2  # 目标最小连续帧数
     "dyn_obj/track_max_age": 5  # 目标最大丢失帧数
     "dyn_obj/track_min_points": 20  # 目标最小点数
-    "dyn_obj/track_gate": 2  # 追踪门控距离(m)
+    "dyn_obj/track_gate": 2.0  # 追踪门控距离(m)
     "dyn_obj/aabb_alpha": 0.5  # AABB 平滑系数
 
     "dyn_obj/dyn_filter_en": true  # 启用动态过滤输出
