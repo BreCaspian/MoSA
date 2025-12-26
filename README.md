@@ -285,7 +285,24 @@ ros2 launch mosa cal_recall.launch.py \
 | **2** |     358.072 |      130.160 |       129.076 |    0.749 |        0.335 |          0.335 |  31 | Buffer2DepthMap 29.642 / 22.8%            | Case2DepthConsistencyCheck 27.175 / 20.9% | Case3DepthConsistencyCheck 10.240 / 7.9%  |            88.658 |     37,077 |        0.002 | 3.9% (0.540/14) |
 | **3** |     340.298 |       60.450 |        59.900 |    0.500 |        0.050 |          0.050 |  31 | Buffer2DepthMap 19.983 / 33.1%            | SphericalProjection 4.618 / 7.6%          | __atan2f 3.943 / 6.5%                     |            18.193 |     18,771 |        0.001 | 1.8% (0.257/14) |
 | **4** |     331.952 |       59.830 |        59.170 |    0.590 |        0.070 |          0.070 |  31 | Buffer2DepthMap 19.215 / 32.1%            | SphericalProjection 5.370 / 9.0%          | __atan2f 4.035 / 6.7%                     |            19.046 |     18,304 |        0.001 | 1.9% (0.261/14) |
+---
 
+> [!TIP]
+所有与性能优化相关的**完整分析数据与报告**已随 **[Release v1.1.0](https://github.com/BreCaspian/MoSA/releases/tag/v1.1.0)** 一并发布。
+
+你可以将 Release 中的 VTune 分析结果下载到本地
+
+在 **已正确安装 [Intel® VTune™ Profiler](https://www.intel.com/content/www/us/en/developer/tools/oneapi/vtune-profiler.html)** 的环境下，使用如下命令直接打开最终一次热点分析结果：
+
+```bash
+vtune-gui vtune_hotspots_mosa_04
+```
+
+<div align="center">
+  <a href="https://github.com/BreCaspian/MoSA/releases" target="_blank">
+    <img src="img/vtune_hotspots_mosa_04.png" alt="VTune Hotspots Analysis Result" width="100%" />
+  </a>
+</div>
 
 ---
 
