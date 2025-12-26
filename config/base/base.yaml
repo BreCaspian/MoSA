@@ -1,0 +1,24 @@
+dynfilter_odom:
+  ros__parameters:
+    "dyn_obj/use_livox_custom": false  # 是否使用Livox CustomMsg
+    "dyn_obj/points_topic": "/livox/lidar"  # 输入点云话题
+    "dyn_obj/use_odom": true  # 是否使用里程计
+    "dyn_obj/odom_topic": "/aft_mapped_to_init"  # 里程计话题
+    "dyn_obj/frame_id": "camera_init"  # 输出坐标系
+
+    "dyn_obj/frame_dur": 0.1  # 帧周期(s)
+    "dyn_obj/buffer_delay": 0.1  # 缓冲延迟(s)
+    "dyn_obj/points_num_perframe": 10000  # 单帧点数估计
+
+    "dyn_obj/dyn_points_stable_en": true  # 动态点稳定化开关
+    "dyn_obj/dyn_points_accu_limit": 3  # 动态点累积帧数
+    "dyn_obj/dyn_points_voxel": 0.4  # 动态点体素滤波(m)
+
+    "dyn_obj/track_enable": true  # 目标级追踪开关
+    "dyn_obj/track_min_hits": 3  # 成为有效目标的最小命中次数
+    "dyn_obj/track_max_age": 5  # 目标最大失配帧数
+    "dyn_obj/track_gate": 1.5  # 关联门限(m)
+    "dyn_obj/aabb_alpha": 0.6  # AABB EMA 平滑系数
+
+    "dyn_obj/cluster_async": false  # 异步聚类开关
+    "dyn_obj/cluster_queue_size": 2  # 异步队列深度

@@ -1,0 +1,12 @@
+dynfilter_odom:
+  ros__parameters:
+    "dyn_obj/use_livox_custom": false  # 标准PointCloud2输入
+    "dyn_obj/points_topic": "/points_raw"  # 按实际话题修改
+    "dyn_obj/frame_dur": 0.1  # 按实际雷达帧率修改
+    "dyn_obj/points_num_perframe": 10000  # 按实际点数修改
+    "dyn_obj/fov_up": 30.0  # 视场上限(度)，按设备修改
+    "dyn_obj/fov_down": -30.0  # 视场下限(度)，按设备修改
+    "dyn_obj/fov_left": 180.0  # 视场左限(度)，按设备修改
+    "dyn_obj/fov_right": -180.0  # 视场右限(度)，按设备修改
+    "dyn_obj/max_pixel_points": 20  # 单像素最大点数
+    "dyn_obj/cluster_Voxel_revolusion": 0.3  # 体素分辨率
