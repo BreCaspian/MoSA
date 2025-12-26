@@ -1,4 +1,4 @@
-# MoSA (Motion-based Sensing Architecture)
+# MoSA (Motion-based Sensing Architecture) 预览版——正在进行全面测试
 
 <div align="center" style="display:flex; justify-content:center; align-items:center; gap:16px;">
   <img src="img/Horizon.png" alt="Horizon Team" style="height:280px; width:auto;" />
@@ -16,7 +16,7 @@ MoSA 是面向实时机器人系统的高性能运动感知框架，专门为 RO
 - 稳定输出 动态点云 + AABB
 - 无学习依赖、无先验假设
 
-MoSA 可在无语义、无训练数据的条件下稳定检测动态目标，并作为下游感知、规划、规避、检测等模块的基础输入。
+MoSA 可在无语义、无训练数据的条件下稳定检测动态目标，并作为下游感知、规划、规避、检测等模块基础输入。
 
 ---
 
